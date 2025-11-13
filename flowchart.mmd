@@ -1,0 +1,13 @@
+'''flowchart LR
+  U[用户消息] --> A[主 Agent（Qwen/Tongyi）]
+  A -->|决定调用工具/子代理| TC[Tool Call]
+  TC --> WT[write_todos 工具]
+  TC --> TT[task 工具（启动 SubAgent）]
+  TT --> SA[子代理（research-agent）]
+  SA --> ST[子代理可用工具，例如 internet_search]
+  ST --> SR[子代理返回（ToolMessage/结果）]
+  WT --> A
+  SR --> A
+  A --> FR[最终 AIMessage（合成结果）]
+  FR --> S[状态更新（例如 todos）]
+'''
