@@ -17,16 +17,38 @@ Obsidian 智能助手 v2.0
 import os
 import sys
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, Any
 from langchain_core.tools import tool
 from langchain_community.chat_models import ChatTongyi
 from tavily import TavilyClient
-
-# 添加 deepagents_official 路径（兼容 exec 和 import 两种方式）
-_current_dir = Path(os.getcwd()) if '__file__' not in dir() else Path(__file__).parent
-sys.path.insert(0, str(_current_dir / "deepagents_official" / "libs"))
 from deepagents import create_deep_agent
-
+try:
+    from token_counter import TokenCounter, count_tokens_for_result
+except ImportError:
+    class TokenCounter:  # type: ignore
+        def __init__(self, model: str = "qwen-turbo"): self.model = model
+        def start_counting(self): pass
+    def count_tokens_for_result(question: str, result: Dict[str, Any], counter: TokenCounter):  # type: ignore
+        pt = len(question)//4; ct = len(str(result))//16
+        return {"question": question, "prompt_tokens": pt, "completion_tokens": ct, "total_tokens": pt+ct, "model": counter.model, "cost": 0.0}
+try:
+    from model_adapters import get_model_adapter
+except ImportError:
+    def get_model_adapter(_name: Optional[str]):
+        class _Dummy:
+            def enhance_system_prompt(self, base: str, tool_descriptions: str) -> str: return base
+            def enhance_user_message(self, msg: str, may_need_tools: bool) -> str: return msg
+        return _Dummy()
+try:
+    from smart_router import create_smart_router, SmartRouter
+except ImportError:
+    SmartRouter = None
+    def create_smart_router(_path: str): return None
+try:
+    from cache_layer import SimpleQueryCache, TextCompressor
+except ImportError:
+    SimpleQueryCache = None  # type: ignore
+    TextCompressor = None  # type: ignore
 
 # ============================================================================
 # 配置常量
@@ -99,7 +121,7 @@ def create_search_tool_v2(docs_path: str = DEFAULT_DOCS_PATH):
                     
                     if len(results) >= max_results:
                         break
-            except Exception as e:
+            except Exception:
                 continue
         
         if not results:
@@ -255,7 +277,13 @@ OBSIDIAN_ASSISTANT_PROMPT_V2 = """你是一个专业的 Obsidian 使用助手。
 def create_obsidian_assistant_v2(
     docs_path: str = DEFAULT_DOCS_PATH,
     model_name: str = DEFAULT_MODEL,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    enable_model_adapter: bool = True,
+    enable_smart_routing: bool = False,
+    enable_cache: bool = False,
+    cache_max_items: int = 256,
+    enable_compression: bool = False,
+    verbose: Optional[bool] = None,
 ):
     """
     创建 Obsidian 智能助手 v2.0
@@ -302,38 +330,196 @@ def create_obsidian_assistant_v2(
     if not Path(docs_path).exists():
         raise ValueError(f"❌ 错误：文档路径不存在 - {docs_path}")
     
-    print("🔧 正在创建 Obsidian 助手 v2.0...")
-    
+    # 精简日志输出
+    if verbose is None:
+        env_flag = os.getenv("OBSIDIAN_ASSISTANT_VERBOSE") or os.getenv("DEEPAGENTS_VERBOSE")
+        if env_flag and str(env_flag).lower() not in {"0", "false", "no"}:
+            verbose = True
+        else:
+            verbose = False
+    if verbose:
+        print(f"🔧 构建 Obsidian 助手 v2.0 model={model_name} docs={docs_path} cache={enable_cache} compression={enable_compression}")
     # 1. 创建模型
-    print(f"  ✓ 初始化模型: {model_name}")
     model = ChatTongyi(model=model_name)
     
     # 2. 创建工具
-    print(f"  ✓ 创建搜索工具（文档路径: {docs_path}）")
+    # 创建工具（省略详细日志）
     search_tool_v2 = create_search_tool_v2(docs_path)
     internet_search_tool_v2 = create_internet_search_tool_v2()
     
     # 3. 创建子代理
-    print("  ✓ 配置网页搜索子代理")
+    # 配置网页搜索子代理
     web_agent_v2 = create_web_search_agent_v2(internet_search_tool_v2)
     
     # 4. 创建主代理
-    print("  ✓ 组装主代理...")
+    # 组装主代理
+    # 5. 模型适配器处理系统提示词 (V2.1 骨架)
+    system_prompt_final = OBSIDIAN_ASSISTANT_PROMPT_V2
+    adapter = None
+    if enable_model_adapter:
+        adapter = get_model_adapter(model_name)
+        tool_desc = "search_obsidian_docs_v2: 本地文档检索; internet_search_v2: 网页搜索 (Tavily)"
+        system_prompt_final = adapter.enhance_system_prompt(system_prompt_final, tool_desc)
+
+    router = None
+    routing_note = ""
+    if enable_smart_routing:
+        router = create_smart_router(docs_path)
+        routing_note = (
+            "\n\n## 智能路由策略 (启用)\n"
+            "- local_only: 高覆盖率时仅本地搜索\n"
+            "- hybrid: 中等覆盖率 → 先本地后按需网页补充\n"
+            "- web_first: 低覆盖或命中时效关键词 → 直接网页搜集信息\n"
+            "(内部将根据查询关键词与覆盖率自动选择策略)"
+        )
+        system_prompt_final += routing_note
+
     assistant = create_deep_agent(
         model=model,
         tools=[search_tool_v2],
         subagents=[web_agent_v2],
-        system_prompt=OBSIDIAN_ASSISTANT_PROMPT_V2
+        system_prompt=system_prompt_final,
     )
     
-    print("✅ Obsidian 助手 v2.0 创建成功！\n")
-    print("📋 配置信息：")
-    print(f"  - 模型: ChatTongyi ({model_name})")
-    print(f"  - 搜索工具: search_obsidian_docs_v2（支持路径返回）")
-    print(f"  - 子代理: web-search-agent-v2（增强触发逻辑）")
-    print(f"  - 引用格式: Obsidian 内部链接 + 网页链接")
-    print(f"  - 文档路径: {docs_path}\n")
+    if verbose:
+        print(f"✅ 助手就绪 adapter={adapter.__class__.__name__ if adapter else 'none'} routing={'on' if enable_smart_routing else 'off'} cache={'on' if enable_cache else 'off'} compression={'on' if enable_compression else 'off'}")
     
+    # 包装一次调用接口，若启用路由则在 messages 前添加策略注释
+    # ---------------- Structured invoke wrapper (V2.1 enhancement) -----------------
+    original_invoke = assistant.invoke
+    token_counter = TokenCounter(model=model_name)
+    query_cache = SimpleQueryCache(max_items=cache_max_items) if (enable_cache and SimpleQueryCache) else None
+    compressor = TextCompressor() if (enable_compression and TextCompressor) else None
+
+    def _extract_user_content(msgs) -> Optional[str]:
+        for m in reversed(msgs):
+            if isinstance(m, tuple):
+                if m[0] == "user":
+                    return m[1]
+            else:
+                role = getattr(m, "role", None) or (isinstance(m, dict) and m.get("role"))
+                if role == "user":
+                    return getattr(m, "content", None) or (isinstance(m, dict) and m.get("content"))
+        return None
+
+    def structured_invoke(state: Dict[str, Any]) -> Dict[str, Any]:
+        """统一返回结构: {answer, raw, route_strategy, adapter_used, token_usage, messages}"""
+        token_counter.start_counting()
+        msgs = state.get("messages", [])
+        user_content = _extract_user_content(msgs)
+        route_strategy = None
+        route_coverage = None
+        time_sensitive = None
+        mutated_state = dict(state)
+        cache_hit = False
+        compression_meta = None
+        if query_cache and isinstance(user_content, str):
+            cached_entry = query_cache.get(user_content)
+            if cached_entry:
+                cached_result = cached_entry['result']
+                cache_hit = True
+                return {
+                    **cached_result,
+                    "cache_hit": True,
+                    "adapter_used": adapter.__class__.__name__ if adapter else None,
+                }
+
+        # 路由 & 用户消息增强
+        if enable_smart_routing and router is not None and isinstance(user_content, str) and user_content.strip():
+            try:
+                route_strategy, route_coverage, time_sensitive = router.route_details(user_content)
+            except Exception:
+                route_strategy = router.route(user_content)
+            annotated = f"[路由策略]={route_strategy} → {user_content}"
+            state_msgs = list(mutated_state.get("messages", []))
+            state_msgs.insert(0, ("system", annotated))
+            # 适配器增强
+            if enable_model_adapter and adapter is not None and route_strategy != "local_only":
+                enhanced = adapter.enhance_user_message(user_content, may_need_tools=True)
+                if enhanced != user_content:
+                    for i in range(len(state_msgs)-1, -1, -1):
+                        role, content = state_msgs[i]
+                        if role == "user" and content == user_content:
+                            state_msgs[i] = (role, enhanced)
+                            break
+            mutated_state["messages"] = state_msgs
+        else:
+            # 适配器在未启用路由情况下也可增强（假设都需要工具预判由简单启发决定）
+            if enable_model_adapter and adapter is not None and isinstance(user_content, str):
+                enhanced = adapter.enhance_user_message(user_content, may_need_tools=True)
+                if enhanced != user_content:
+                    state_msgs = list(mutated_state.get("messages", []))
+                    for i in range(len(state_msgs)-1, -1, -1):
+                        role, content = state_msgs[i]
+                        if role == "user" and content == user_content:
+                            state_msgs[i] = (role, enhanced)
+                            break
+                    mutated_state["messages"] = state_msgs
+
+        # === 执行底层调用 ===
+        raw_result = original_invoke(mutated_state)
+        # Token usage 统计
+        usage_record = {}
+        try:
+            usage_record = count_tokens_for_result(user_content or "", raw_result, token_counter)
+        except Exception as e:
+            usage_record = {"error": f"token_count_failed: {e}"}
+
+        # 提取最终回答文本
+        answer_text = None
+        try:
+            from utils import extract_final_answer
+            answer_text = extract_final_answer(raw_result)
+        except Exception:
+            msgs_out = raw_result.get("messages", []) if isinstance(raw_result, dict) else []
+            for m in reversed(msgs_out):
+                if isinstance(m, tuple) and m[0] == "assistant":
+                    answer_text = m[1]; break
+                if isinstance(m, dict) and m.get("role") == "assistant":
+                    answer_text = m.get("content"); break
+        if answer_text is None:
+            answer_text = "(未能提取回答内容)"
+        if compressor:
+            comp = compressor.maybe_compress(answer_text)
+            compression_meta = comp
+            if comp.get("applied"):
+                answer_text = comp.get("compressed") or answer_text
+
+        # 引用来源解析
+        sources = []
+        try:
+            import re
+            for match in re.findall(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]", answer_text):
+                p, disp = match
+                sources.append({"type": "internal", "path": p.strip(), "display": (disp or p).strip()})
+            for match in re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", answer_text):
+                txt, url = match
+                sources.append({"type": "external", "text": txt.strip(), "url": url.strip()})
+        except Exception:
+            pass
+
+        final_payload = {
+            "answer": answer_text,
+            "raw": raw_result,
+            "route_strategy": route_strategy,
+            "route_coverage": route_coverage,
+            "time_sensitive": time_sensitive,
+            "adapter_used": adapter.__class__.__name__ if adapter else None,
+            "token_usage": usage_record,
+            "sources": sources,
+            "messages": raw_result.get("messages") if isinstance(raw_result, dict) else None,
+            "cache_hit": cache_hit,
+            "compression": compression_meta,
+        }
+        if query_cache and isinstance(user_content, str):
+            try:
+                query_cache.set(user_content, final_payload)
+            except Exception:
+                pass
+        return final_payload
+
+    assistant.invoke = structured_invoke  # type: ignore
+
     return assistant
 
 
@@ -356,10 +542,7 @@ def quick_ask(question: str, assistant=None, docs_path: str = DEFAULT_DOCS_PATH)
     if assistant is None:
         assistant = create_obsidian_assistant_v2(docs_path=docs_path)
     
-    result = assistant.invoke({
-        "messages": [("user", question)]
-    })
-    
+    result = assistant.invoke({"messages": [("user", question)]})
     return result
 
 

@@ -7,9 +7,14 @@
 ```
 deepagents/
 ├── deepagents_official/    # DeepAgents 核心框架（带扩展）
-├── obsidian_assistant/     # Obsidian 笔记助手
-├── flowchart.mmd          # 流程图
-└── README.md              # 本文件
+├── obsidian_assistant/     # Obsidian 笔记助手（核心代码）
+├── examples/               # 示例与演示
+│   └── notebooks/         # Jupyter Notebook 演示
+├── docs/                  # 项目文档
+│   ├── obsidian/         # Obsidian 助手相关文档
+│   └── development/      # 开发文档
+├── flowchart.mmd         # 流程图
+└── README.md             # 本文件
 ```
 
 ## ✨ 主要扩展
@@ -44,7 +49,11 @@ python deepagents_official/examples/qwen/qwen_example.py
 - 🎯 Token 使用优化
 - 💡 上下文感知的笔记建议
 
-查看 [`obsidian_assistant/README_OBSIDIAN.md`](obsidian_assistant/README_OBSIDIAN.md) 了解详情。
+查看详细文档：
+- [快速开始指南](obsidian_assistant/README.md)
+- [V2.0 vs Copilot 对比报告](docs/obsidian/obsidian-comparison-v2.0-vs-copilot.md)
+- [V2.1 优化计划](docs/obsidian/obsidian-optimization-plan-v2.1.md)
+- [Notebook 演示](examples/notebooks/)
 
 ## 🚀 快速开始
 
@@ -73,9 +82,16 @@ python obsidian_assistant.py
 
 ## 📚 文档资源
 
+### 核心文档
 - **DeepAgents 官方文档**: https://github.com/langchain-ai/deepagents
 - **Qwen/通义千问**: https://help.aliyun.com/zh/dashscope/
-- **Obsidian 助手文档**: [README_OBSIDIAN.md](obsidian_assistant/README_OBSIDIAN.md)
+- **Obsidian 助手文档**: [README](obsidian_assistant/README.md)
+
+### 详细文档
+- **Obsidian 助手对比报告**: [V2.0 vs Copilot](docs/obsidian/obsidian-comparison-v2.0-vs-copilot.md)
+- **优化计划**: [V2.1 版本规划](docs/obsidian/obsidian-optimization-plan-v2.1.md)
+- **示例代码**: [Jupyter Notebooks](examples/notebooks/)
+- **命名规范**: [文档命名规范](docs/NAMING_CONVENTION.md)
 
 ## 🔧 开发环境设置
 

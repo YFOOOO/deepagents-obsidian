@@ -1,0 +1,22 @@
+# Jupyter Notebook 依赖
+jupyter>=1.0.0
+ipykernel>=6.0.0
+notebook>=7.0.0
+
+# DeepAgents 核心依赖
+dashscope>=1.14.0
+langchain>=0.1.0
+langchain-community>=0.0.20
+langchain-core>=0.1.0
+langgraph>=0.0.26
+
+# 工具依赖
+tavily-python>=0.3.0
+python-dotenv>=1.0.0
+
+# 可选：数据分析和可视化
+pandas>=2.0.0
+matplotlib>=3.7.0
+
+# 可选：性能优化
+tiktoken>=0.5.0
