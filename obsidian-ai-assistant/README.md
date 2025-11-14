@@ -13,18 +13,21 @@ An intelligent Obsidian plugin powered by DeepAgents that brings AI-powered assi
 |---------|--------|------|
 | API 端点 | 3/3 (100%) | ✅ 通过 |
 | 插件集成 | 5/5 (100%) | ✅ 通过 |
-| 核心功能 | 8/8 (100%) | ✅ 通过 |
-| **总计** | **16/16 (100%)** | ✅ **通过** |
+| 核心功能 | 9/9 (100%) | ✅ 通过 |
+| **总计** | **17/17 (100%)** | ✅ **通过** |
 
 **性能亮点**:
 - ⚡ 响应时间：1.9秒（超预期 5倍）
 - ✅ 本地搜索准确率：~95%
 - 🎯 稳定性：无崩溃，100% 成功率
+- 📊 可观测性：完整的运行日志（工具调用 + 路由策略 + 覆盖率）⬆️ **新增**
 
-**已知问题** (4个):
-- P0: 内部链接无法跳转 🔥
+**已修复问题** (1个):
+- ✅ P0: 内部链接跳转 - **已修复并验证**
+
+**待优化项** (3个):
 - P1: 缺少复制/插入功能
-- P2: 参考来源重复显示
+- P2: 参考来源重复显示  
 - P2: 界面语言不可配置
 
 详见：[测试报告](../docs/reports/20251114-testing-plugin-integration.md)
@@ -36,10 +39,11 @@ An intelligent Obsidian plugin powered by DeepAgents that brings AI-powered assi
 - 🤖 **AI-Powered Chat Interface** - Ask questions about your notes and get intelligent responses
 - 🔍 **Smart Search** - Combines local note search with web search capabilities
 - 📝 **Source Citations** - Every answer includes references to relevant notes or web sources
-- 💰 **Cost Tracking** - Monitor token usage and estimated costs
+- � **Internal Link Navigation** - Click on note references to jump directly to them ✅ **已修复**
+- �💰 **Cost Tracking** - Monitor token usage and estimated costs
 - ⚡ **Caching** - Reduce API calls and costs with intelligent response caching
 - 🎯 **Smart Routing** - Automatically chooses between local and web search
-- 🔗 **Obsidian Integration** - Seamlessly navigate to referenced notes
+- � **Detailed Logging** - View tool calls, routing decisions, and coverage metrics ⬆️ **新增**
 
 ## Prerequisites
 
@@ -215,6 +219,47 @@ Based on testing with `qwen-turbo` model:
 - View backend logs for errors
 - Ensure you have internet connectivity (for web search)
 
+### Viewing Backend Logs
+
+The backend now provides detailed logging for debugging:
+
+**What you'll see in the logs:**
+```
+============================================================
+📝 查询请求: your query here
+============================================================
+🔍 [search_obsidian_docs_v2] 工具被调用
+   查询: 'your search query'
+   最大结果数: 5
+   搜索目录: /path/to/vault
+   目录存在: True
+   📄 .md 文件总数: 671
+   🔎 搜索关键词: 'keyword'
+   ✅ 搜索完成: 检查了 X 个文件，找到 Y 个结果
+
+============================================================
+✅ 查询完成
+------------------------------------------------------------
+🧭 路由策略: local_only | hybrid | web_first
+📊 覆盖率: XX.X%
+⚡ 缓存命中: 是 (if applicable)
+🔢 Token 使用: (if available)
+   - Prompt: XXX tokens
+   - Completion: XXX tokens
+   - Total: XXX tokens
+   - Cost: ¥X.XXXXXX
+📚 参考来源: X 个
+============================================================
+```
+
+**Log indicators:**
+- 🔍 Local search tool invocation
+- 🌐 Web search tool invocation
+- 🧭 Routing strategy decision
+- 📊 Coverage percentage
+- ⚡ Cache hit status
+- 🔢 Token usage and cost
+
 ## Contributing
 
 Contributions are welcome! Please:
@@ -256,6 +301,11 @@ MIT License - see [LICENSE](../LICENSE) for details
 
 ---
 
-**Current Version**: 0.1.0  
-**Last Updated**: 2025-11-14  
+**Current Version**: 0.1.1 ⬆️  
+**Last Updated**: 2025-11-14 18:15  
 **Maintainer**: YF
+
+**Recent Updates**:
+- ✅ Fixed internal link navigation (sourcePath correction)
+- ✅ Enhanced backend logging (tool calls + routing + coverage)
+- ✅ Verified 100% test pass rate (17/17)

@@ -1,3 +1,16 @@
+# 辅助函数：生成 Obsidian 内部链接格式
+def format_note_reference(note_path: str, note_title: str) -> str:
+    """
+    生成 Obsidian 内部链接格式
+    Args:
+        note_path: 笔记相对路径，如 "Obsidian_Knowledge/欢迎.md"
+        note_title: 显示标题，如 "欢迎"
+    Returns:
+        格式化的内部链接，如 "[[Obsidian_Knowledge/欢迎|欢迎]]"
+    """
+    clean_path = note_path.replace('.md', '')
+    return f"[[{clean_path}|{note_title}]]"
+
 """
 Obsidian 智能助手 v2.0
 
@@ -16,6 +29,7 @@ Obsidian 智能助手 v2.0
 
 import os
 import sys
+import json
 from pathlib import Path
 from typing import Literal, Optional, Dict, Any
 from langchain_core.tools import tool
@@ -83,58 +97,81 @@ def create_search_tool_v2(docs_path: str = DEFAULT_DOCS_PATH):
             max_results: 返回的最大结果数量（默认 5）
             
         返回:
-            格式化的搜索结果，包含文档路径、文件名和相关内容片段
+            JSON 格式的搜索结果，包含状态、消息和文档列表
         """
+        # 🔍 调试日志：工具被调用
+        print(f"🔍 [search_obsidian_docs_v2] 工具被调用")
+        print(f"   查询: '{query}'")
+        print(f"   最大结果数: {max_results}")
+        
         docs_dir = Path(docs_path)
+        print(f"   搜索目录: {docs_dir}")
+        print(f"   目录存在: {docs_dir.exists()}")
         
         if not docs_dir.exists():
-            return f"❌ 错误：文档目录不存在 - {docs_path}"
+            return json.dumps({
+                "status": "error",
+                "message": f"❌ 错误：文档目录不存在 - {docs_path}",
+                "results": []
+            }, ensure_ascii=False)
         
         results = []
         query_lower = query.lower()
         
+        # 🔍 调试日志：开始搜索
+        all_md_files = list(docs_dir.rglob("*.md"))
+        print(f"   📄 .md 文件总数: {len(all_md_files)}")
+        print(f"   🔎 搜索关键词: '{query_lower}'")
+        
         # 递归搜索所有 markdown 文件
-        for md_file in docs_dir.rglob("*.md"):
+        searched_count = 0
+        for md_file in all_md_files:
+            searched_count += 1
             try:
                 content = md_file.read_text(encoding='utf-8')
-                
                 # 检查查询关键词是否在文件内容中
                 if query_lower in content.lower():
                     # 获取相对路径（相对于根目录）
                     relative_path = md_file.relative_to(docs_dir)
-                    
-                    # 移除 .md 扩展名用于 Obsidian 链接
-                    obsidian_path = str(relative_path).replace('.md', '')
-                    
+                    obsidian_path = str(relative_path)
                     # 查找包含关键词的上下文（前后各100个字符）
                     content_lower = content.lower()
                     pos = content_lower.find(query_lower)
                     start = max(0, pos - 100)
                     end = min(len(content), pos + len(query_lower) + 100)
                     snippet = content[start:end].strip()
-                    
+                    # 使用 format_note_reference 生成内部链接
+                    note_link = format_note_reference(obsidian_path, md_file.stem)
                     results.append({
                         'file': md_file.name,
-                        'path': obsidian_path,  # Obsidian 内部链接路径
-                        'snippet': snippet
+                        'path': obsidian_path.replace('.md', ''),
+                        'snippet': snippet,
+                        'note_link': note_link
                     })
-                    
                     if len(results) >= max_results:
                         break
             except Exception:
                 continue
         
+        # 🔍 调试日志：搜索完成
+        print(f"   ✅ 搜索完成: 检查了 {searched_count} 个文件，找到 {len(results)} 个结果")
+        
         if not results:
-            return f"🔍 未找到与 '{query}' 相关的文档"
+            return json.dumps({
+                "status": "no_results",
+                "message": f"🔍 未找到与「{query}」相关的文档。建议：1) 尝试其他关键词 2) 使用网络搜索获取最新信息",
+                "query": query,
+                "results": []
+            }, ensure_ascii=False)
         
-        # 格式化输出结果
-        output = f"📚 找到 {len(results)} 个相关文档：\n\n"
-        for i, result in enumerate(results, 1):
-            output += f"{i}. 【文件】{result['file']}\n"
-            output += f"   【路径】{result['path']}\n"
-            output += f"   【内容】...{result['snippet']}...\n\n"
-        
-        return output
+        # 返回结构化结果
+        return json.dumps({
+            "status": "success",
+            "query": query,
+            "count": len(results),
+            "message": f"📚 找到 {len(results)} 个相关文档",
+            "results": results
+        }, ensure_ascii=False, indent=2)
     
     return search_obsidian_docs_v2
 
@@ -170,11 +207,18 @@ def create_internet_search_tool_v2():
         返回:
             包含搜索结果的字典
         """
+        # 🌐 调试日志：网络搜索被调用
+        print(f"🌐 [internet_search_v2] 工具被调用")
+        print(f"   查询: '{query}'")
+        print(f"   最大结果: {max_results}, 主题: {topic}")
+        
         search_docs = tavily_client.search(
             query,
             max_results=max_results,
             topic=topic,
         )
+        
+        print(f"   ✅ 网络搜索完成: 返回 {len(search_docs.get('results', []))} 个结果")
         return search_docs
     
     return internet_search_v2
@@ -231,42 +275,92 @@ def create_web_search_agent_v2(internet_search_tool):
 
 OBSIDIAN_ASSISTANT_PROMPT_V2 = """你是一个专业的 Obsidian 使用助手。你的任务是帮助用户解决 Obsidian 相关的问题。
 
-**核心规则**：
-1. 优先使用 search_obsidian_docs_v2 工具搜索本地知识库
-2. 如果本地文档无法解决问题，使用 web-search-agent-v2 子代理进行网络搜索
-3. **必须在回答中添加引用来源**
+**🚨 核心约束（必须严格遵守）**：
 
-**引用格式要求**：
-- 对于本地文档：使用 Obsidian 内部链接格式 `[[路径|显示名称]]`
-  例如：`[[Editing and formatting/Basic formatting syntax|基础格式化语法]]`
-- 对于网页来源：使用标准 Markdown 链接 `[显示文本](URL)`
-  例如：`[Obsidian 官网](https://obsidian.md)`
-- **引用位置**：
-  - **必需**：在回答末尾添加"参考来源"章节，列出所有引用
-  - **推荐**：在具体知识点后直接标注来源，格式如 `（参考：[[路径|文件名]]）`
-  - **可选**：对于复杂回答，在引用列表中标注重要程度（⭐⭐⭐ 核心参考，⭐⭐ 补充阅读）
+1. **真实性原则 - 禁止编造内容**：
+   - ❌ **绝对禁止**编造不存在的文件名、路径或文档
+   - ❌ **绝对禁止**引用工具未返回的任何路径或链接
+   - ✅ **只能引用** search_obsidian_docs_v2 或 internet_search_v2 工具实际返回的内容
 
-**引用示例**：
+2. **工具使用规范**：
+   - 第一步：使用 search_obsidian_docs_v2 搜索本地知识库
+   - 如果本地搜索返回空结果或"未找到"，必须：
+     a) 明确告知用户"本地文档中未找到相关内容"
+     b) 询问是否需要搜索网络获取信息
+   - 只有在用户同意或明确需要最新信息时，才使用 internet_search_v2
+
+3. **引用格式严格要求**：
+   - 本地文档：`[[工具返回的完整路径|显示名称]]`
+   - 网页来源：`[标题](工具返回的完整URL)`
+   - 每个引用必须对应工具的实际返回结果
+
+**正确示例**（Few-shot）：
+
+**示例 1 - 本地文档有结果**：
 ```
-### 如何创建链接
+工具返回：
+{
+  "results": [
+    {"path": "Linking notes and files/Internal links", "title": "内部链接", "snippet": "...双方括号..."}
+  ]
+}
 
-1. **内部链接**：使用双方括号 `[[]]` 包裹笔记名称（参考：[[Linking notes and files/Internal links|内部链接]]）
-2. **外部链接**：使用 Markdown 格式 `[文本](URL)`（参考：[[Editing and formatting/Basic formatting syntax|基础格式化语法]]）
+正确回答：
+在 Obsidian 中创建内部链接非常简单，使用双方括号 `[[]]` 即可。
+
+例如：`[[我的笔记]]` 会创建指向"我的笔记"的链接。
+
+**参考来源**：
+- [[Linking notes and files/Internal links|内部链接]]
+```
+
+**示例 2 - 本地文档无结果**：
+```
+工具返回：
+{
+  "status": "no_results",
+  "message": "未找到相关文档"
+}
+
+正确回答：
+抱歉，我在您的本地 Obsidian 文档中未找到关于「内部链接」的相关内容。
+
+我可以：
+1. 🌐 搜索网络获取 Obsidian 官方文档
+2. 💡 基于 Obsidian 的通用知识为您解答
+
+您希望我采取哪种方式？
+```
+
+**示例 3 - 错误示范（禁止模仿）**：
+```
+❌ 错误：编造不存在的路径
+"根据 [[笔记/内部链接教程|内部链接教程]] 所述..."
+（如果工具未返回这个路径，这就是编造）
+
+❌ 错误：本地无结果时继续详细回答并假装有引用
+工具返回空 → 仍然回答"根据 [[某某文档]] ..."
+
+✅ 正确：明确告知无结果，询问下一步
+```
+
+**引用格式模板**：
+```
+### 问题解答
+
+[具体回答内容]（参考：[[工具返回的路径|显示名称]]）
 
 ### 参考来源
-⭐⭐⭐ [[Linking notes and files/Internal links|内部链接]] - 核心参考
-⭐⭐ [[Editing and formatting/Basic formatting syntax|基础格式化语法]] - 补充阅读
+⭐⭐⭐ [[路径1|标题1]] - 核心参考
+⭐⭐ [[路径2|标题2]] - 补充阅读
 ```
 
-**特殊情况**：
-- 如果需要引用文档中的特定段落，可以使用引用块格式：
-  ```
-  > 原文：「在 Obsidian 中，双向链接是核心功能...」
-  > 
-  > 来源：[[Linking notes and files/Internal links|内部链接]]
-  ```
+**特殊情况处理**：
+- 如果用户问题超出本地文档范围，诚实告知并建议网络搜索
+- 如果需要引用网页，必须使用 internet_search_v2 获取真实URL
+- 不要凭空推测或编造任何文档路径
 
-请始终以专业、准确、结构化的方式回答问题，并确保每个回答都包含清晰的引用来源。
+请始终以专业、准确、诚实的方式回答问题，确保每个引用都对应工具的实际返回结果。
 """
 
 
@@ -491,10 +585,21 @@ def create_obsidian_assistant_v2(
             import re
             for match in re.findall(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]", answer_text):
                 p, disp = match
-                sources.append({"type": "internal", "path": p.strip(), "display": (disp or p).strip()})
+                display_text = (disp or p).strip()
+                sources.append({
+                    "type": "internal", 
+                    "path": p.strip(), 
+                    "display": display_text,
+                    "title": display_text  # 添加 title 字段用于 API 兼容
+                })
             for match in re.findall(r"\[([^\]]+)\]\((https?://[^)]+)\)", answer_text):
                 txt, url = match
-                sources.append({"type": "external", "text": txt.strip(), "url": url.strip()})
+                sources.append({
+                    "type": "external", 
+                    "text": txt.strip(), 
+                    "url": url.strip(),
+                    "title": txt.strip()  # 添加 title 字段用于 API 兼容
+                })
         except Exception:
             pass
 

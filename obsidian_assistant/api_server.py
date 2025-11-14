@@ -142,6 +142,11 @@ async def process_query(request: QueryRequest):
         raise HTTPException(status_code=500, detail="Assistant not initialized")
     
     try:
+        # Log query start
+        print(f"\n{'='*60}")
+        print(f"📝 查询请求: {request.query[:100]}{'...' if len(request.query) > 100 else ''}")
+        print(f"{'='*60}")
+        
         # Invoke the assistant
         result = assistant.invoke({
             "messages": [("user", request.query)]
@@ -160,12 +165,28 @@ async def process_query(request: QueryRequest):
         # Extract sources
         sources = []
         for source in result.get("sources", []):
-            sources.append(Source(
-                title=source.get("title", ""),
-                path=source.get("path"),
-                url=source.get("url"),
-                relevance=source.get("relevance", 0.0)
-            ))
+            # Handle internal links (from [[path|display]])
+            if source.get("type") == "internal":
+                sources.append(Source(
+                    title=source.get("display", source.get("path", "")),
+                    path=source.get("path"),
+                    relevance=1.0
+                ))
+            # Handle external links (from [text](url))
+            elif source.get("type") == "external":
+                sources.append(Source(
+                    title=source.get("text", ""),
+                    url=source.get("url"),
+                    relevance=1.0
+                ))
+            # Fallback for other source formats
+            else:
+                sources.append(Source(
+                    title=source.get("title", source.get("display", "")),
+                    path=source.get("path"),
+                    url=source.get("url"),
+                    relevance=source.get("relevance", 0.0)
+                ))
         
         # Extract token usage
         token_usage = None
@@ -177,6 +198,35 @@ async def process_query(request: QueryRequest):
                 total_tokens=usage_data.get("total_tokens", 0),
                 cost=usage_data.get("cost", 0.0)
             )
+        
+        # Log query completion with statistics
+        print(f"\n{'='*60}")
+        print(f"✅ 查询完成")
+        print(f"{'-'*60}")
+        
+        # Log route strategy if available
+        if result.get("route_strategy"):
+            print(f"🧭 路由策略: {result.get('route_strategy')}")
+            if result.get("route_coverage") is not None:
+                print(f"📊 覆盖率: {result.get('route_coverage'):.1%}")
+            if result.get("time_sensitive"):
+                print(f"⏰ 时效性: {result.get('time_sensitive')}")
+        
+        # Log cache status
+        if result.get("cache_hit"):
+            print(f"⚡ 缓存命中: 是")
+        
+        # Log token usage
+        if token_usage:
+            print(f"🔢 Token 使用:")
+            print(f"   - Prompt: {token_usage.prompt_tokens:,} tokens")
+            print(f"   - Completion: {token_usage.completion_tokens:,} tokens")
+            print(f"   - Total: {token_usage.total_tokens:,} tokens")
+            print(f"   - Cost: ¥{token_usage.cost:.6f}")
+        
+        # Log sources count
+        print(f"📚 参考来源: {len(sources)} 个")
+        print(f"{'='*60}\n")
         
         return QueryResponse(
             answer=answer,

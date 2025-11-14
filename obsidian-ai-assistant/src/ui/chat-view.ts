@@ -70,7 +70,7 @@ export class AIAssistantView extends ItemView {
 		});
 
 		// Welcome message
-		this.addMessage("assistant", "Hello! I'm your AI assistant. Ask me anything about your notes or general questions.");
+		void this.addMessage("assistant", "Hello! I'm your AI assistant. Ask me anything about your notes or general questions.");
 	}
 
 	async onClose() {
@@ -102,10 +102,10 @@ export class AIAssistantView extends ItemView {
 		this.inputEl.value = "";
 
 		// Add user message
-		this.addMessage("user", query);
+		await this.addMessage("user", query);
 
 		// Add loading indicator
-		const loadingEl = this.addMessage("assistant", "Thinking...");
+		const loadingEl = await this.addMessage("assistant", "Thinking...");
 		loadingEl.addClass("loading");
 
 		try {
@@ -116,12 +116,12 @@ export class AIAssistantView extends ItemView {
 			loadingEl.remove();
 
 			if (response.error) {
-				this.addMessage("error", `Error: ${response.error}`);
+				await this.addMessage("error", `Error: ${response.error}`);
 				return;
 			}
 
 			// Add assistant response
-			this.addMessage("assistant", response.answer);
+			await this.addMessage("assistant", response.answer);
 
 			// Add sources if available
 			if (response.sources && response.sources.length > 0) {
@@ -134,24 +134,79 @@ export class AIAssistantView extends ItemView {
 			}
 		} catch (error) {
 			loadingEl.remove();
-			this.addMessage("error", `Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+			await this.addMessage("error", `Error: ${error instanceof Error ? error.message : "Unknown error"}`);
 		}
 	}
 
-	private addMessage(type: "user" | "assistant" | "error", content: string): HTMLElement {
+	private async addMessage(type: "user" | "assistant" | "error", content: string): Promise<HTMLElement> {
 		const messageEl = this.chatContainer.createEl("div", {
 			cls: `ai-message ai-message-${type}`,
 		});
 
 		const contentEl = messageEl.createEl("div", { cls: "ai-message-content" });
 
-		// Render markdown content
-		MarkdownRenderer.renderMarkdown(content, contentEl, "", this);
+		// Render markdown content with correct sourcePath for internal link resolution
+		// Use "/" as vault root to ensure [[path|title]] links work correctly
+		await MarkdownRenderer.renderMarkdown(content, contentEl, "/", this);
+
+		// Ensure any [[path|title]] internal links in the original content become clickable
+		this.linkifyInternalLinks(contentEl, content);
 
 		// Scroll to bottom
 		this.chatContainer.scrollTop = this.chatContainer.scrollHeight;
 
 		return messageEl;
+	}
+
+	// Post-process rendered content to make internal [[path|title]] links open correctly
+	private linkifyInternalLinks(container: HTMLElement, originalContent: string) {
+		const regex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+		let match: RegExpExecArray | null;
+		const links: Array<{ path: string; title: string }> = [];
+		while ((match = regex.exec(originalContent)) !== null) {
+			const p = match[1].trim();
+			const disp = (match[2] || match[1]).trim();
+			links.push({ path: p.replace(/\.md$/, ""), title: disp });
+		}
+
+		if (links.length === 0) return;
+
+		// Collect text nodes under container
+		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+		const textNodes: Text[] = [];
+		let node: Node | null;
+		while ((node = walker.nextNode()) as Node) {
+			textNodes.push(node as Text);
+		}
+
+		// For each parsed link, replace the first occurrence of title in the text nodes
+		for (const l of links) {
+			for (const tnode of textNodes) {
+				if (!tnode.nodeValue) continue;
+				const idx = tnode.nodeValue.indexOf(l.title);
+				if (idx >= 0) {
+					const before = tnode.nodeValue.slice(0, idx);
+					const after = tnode.nodeValue.slice(idx + l.title.length);
+					const parent = tnode.parentNode as Node;
+					if (!parent) continue;
+					const beforeNode = document.createTextNode(before);
+					const linkEl = document.createElement("a");
+					linkEl.textContent = l.title;
+					linkEl.className = "ai-internal-link";
+					linkEl.href = "#";
+					linkEl.addEventListener("click", (e) => {
+						e.preventDefault();
+						this.app.workspace.openLinkText(l.path, "", false);
+					});
+					const afterNode = document.createTextNode(after);
+					parent.insertBefore(beforeNode, tnode);
+					parent.insertBefore(linkEl, tnode);
+					parent.insertBefore(afterNode, tnode);
+					parent.removeChild(tnode);
+					break; // go to next parsed link
+				}
+			}
+		}
 	}
 
 	private addSources(response: QueryResponse) {
@@ -161,7 +216,16 @@ export class AIAssistantView extends ItemView {
 
 		const sourcesList = sourcesEl.createEl("ul", { cls: "ai-sources-list" });
 
+		// De-duplicate sources by key (path/url/title) - use stricter key generation
+		const seen = new Set<string>();
 		response.sources.forEach((source) => {
+			// Generate unique key with type prefix to avoid collisions
+			const key = source.path ? `internal:${source.path}` : 
+			            source.url ? `external:${source.url}` : 
+			            `text:${source.title}`;
+			if (seen.has(key)) return;
+			seen.add(key);
+
 			const item = sourcesList.createEl("li");
 
 			if (source.path) {
@@ -186,7 +250,8 @@ export class AIAssistantView extends ItemView {
 				item.setText(source.title);
 			}
 
-			if (source.relevance) {
+			// Only show relevance percent when it's meaningful (not the default 1.0 or 100%)
+			if (typeof source.relevance === 'number' && source.relevance > 0 && source.relevance !== 1.0) {
 				item.createEl("span", {
 					text: ` (${Math.round(source.relevance * 100)}%)`,
 					cls: "ai-source-relevance",
