@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-ai-assistant",
+	"name": "AI Assistant (DeepAgents)",
+	"version": "0.1.0",
+	"minAppVersion": "0.15.0",
+	"description": "Intelligent Obsidian assistant powered by DeepAgents with local and web search capabilities",
+	"author": "YF",
+	"authorUrl": "https://github.com/YFOOOO/deepagents-obsidian",
+	"fundingUrl": "https://github.com/YFOOOO/deepagents-obsidian",
+	"isDesktopOnly": false
+}

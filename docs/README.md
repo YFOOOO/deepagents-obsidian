@@ -11,10 +11,13 @@ docs/
 ├── NAMING_QUICK_REFERENCE.md          # 命名快速参考卡片
 ├── obsidian/                          # Obsidian 助手文档
 │   ├── obsidian-comparison-v2.0-vs-copilot.md       # V2.0 对比报告
-│   └── obsidian-optimization-plan-v2.1.md           # V2.1 优化计划
+│   ├── obsidian-optimization-plan-v2.1.md           # V2.1 优化计划
+│   └── pricing-guide.md                             # 价格管理指南
 ├── development/                       # 开发文档（预留）
 └── reports/                          # 时间记录和报告
-    └── 20251114-summary-optimization.md              # 项目优化总结
+    ├── 20251114-summary-optimization.md              # 项目优化总结
+    ├── 20251114-testing-plugin-integration.md        # 插件集成测试报告 ⭐ 新增
+    └── NAMING_IMPLEMENTATION_SUMMARY.md              # 命名规范实施总结
 ```
 
 ## 📚 文档索引
@@ -87,6 +90,32 @@ docs/
 - 版本控制机制
 - 便捷更新流程
 - qwen-max 降价 47% 分析
+
+---
+
+### 测试报告
+
+#### [插件集成测试报告](reports/20251114-testing-plugin-integration.md) ⭐ **最新**
+**Obsidian AI Assistant 插件集成测试完整报告**
+
+内容概览：
+- 测试结果总览（16/16 通过）
+- API 端点测试详情
+- Obsidian 插件集成测试
+- 性能分析与对比
+- 发现的 4 个问题详解
+- 下一步行动计划
+
+**关键数据**：
+- API 响应时间：1.9秒（超预期 5倍）
+- 测试通过率：100%
+- 整体评价：良好（70/100）
+- 发布建议：内部 Beta 测试就绪
+
+**适合阅读对象**：
+- 了解插件测试进度
+- 查看发现的问题
+- 规划下一步开发
 
 ---
 
@@ -167,8 +196,9 @@ docs/
 | 2025-11-14 | 导航索引 | 创建文档导航系统 |
 | 2025-11-14 | 对比报告 | 从 obsidian_assistant 移动至此 |
 | 2025-11-14 | 优化计划 | 从 obsidian_assistant 移动至此 |
+| 2025-11-14 | 测试报告 | ⭐ 新增插件集成测试报告 |
 
 ---
 
 **维护者**: YF  
-**最后更新**: 2025-11-14
+**最后更新**: 2025-11-14 17:50
